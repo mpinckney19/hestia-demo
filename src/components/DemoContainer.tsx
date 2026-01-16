@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState, useEffect } from 'react';
-import { useProfiles } from '@/hooks/useProfiles';
+import { useProfiles, type ProfileMode } from '@/hooks/useProfiles';
 import { useCoordination } from '@/hooks/useCoordination';
 import { ProfileCard } from './ProfileCard';
 import { ProfileCardSkeleton } from './ProfileCardSkeleton';
@@ -45,6 +45,7 @@ export function DemoContainer() {
   const [viewMode, setViewMode] = useState<'plan' | 'conversation'>('plan');
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [statusMessageIndex, setStatusMessageIndex] = useState(0);
+  const [profileMode, setProfileMode] = useState<ProfileMode>('generated');
 
   // Rotate status messages during generation
   useEffect(() => {
@@ -75,11 +76,11 @@ export function DemoContainer() {
 
   const handleGenerateProfiles = useCallback(async () => {
     try {
-      await generateProfiles();
+      await generateProfiles(profileMode);
     } catch (error) {
       console.error('Failed to generate profiles:', error);
     }
-  }, [generateProfiles]);
+  }, [generateProfiles, profileMode]);
 
   const handleSelectScenario = useCallback((scenarioId: string) => {
     setSelectedScenario(scenarioId);
@@ -147,13 +148,33 @@ export function DemoContainer() {
                 </button>
               )}
               {phase === 'idle' && (
-                <button
-                  onClick={handleGenerateProfiles}
-                  disabled={isGenerating}
-                  className="relative px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-300 overflow-hidden bg-gradient-to-r from-terracotta-500 to-cyan-500 text-white hover:shadow-lg hover:shadow-terracotta-500/25 hover:-translate-y-0.5"
-                >
-                  Generate Profiles
-                </button>
+                <>
+                  <div className="flex items-center gap-1 bg-stone-800 rounded-lg p-1">
+                    <button
+                      onClick={() => setProfileMode('generated')}
+                      className={`px-3 py-1 rounded text-sm transition-colors ${
+                        profileMode === 'generated' ? 'bg-stone-600 text-white' : 'text-stone-400 hover:text-stone-300'
+                      }`}
+                    >
+                      Generated
+                    </button>
+                    <button
+                      onClick={() => setProfileMode('real')}
+                      className={`px-3 py-1 rounded text-sm transition-colors ${
+                        profileMode === 'real' ? 'bg-stone-600 text-white' : 'text-stone-400 hover:text-stone-300'
+                      }`}
+                    >
+                      Bobby & Michelle
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleGenerateProfiles}
+                    disabled={isGenerating}
+                    className="relative px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-300 overflow-hidden bg-gradient-to-r from-terracotta-500 to-cyan-500 text-white hover:shadow-lg hover:shadow-terracotta-500/25 hover:-translate-y-0.5"
+                  >
+                    {profileMode === 'generated' ? 'Generate Profiles' : 'Load Bobby & Michelle'}
+                  </button>
+                </>
               )}
               {phase === 'generating' && (
                 <div className="px-5 py-2.5 rounded-xl font-medium text-sm bg-stone-800 text-stone-500">
