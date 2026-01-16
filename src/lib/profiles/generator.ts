@@ -1,108 +1,145 @@
 /**
  * AI-powered profile generation using Claude API
- * Generates rich user profiles with guaranteed tension points
+ * Uses tool use to guarantee valid JSON output
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { ProfilePair } from './types';
+import type { ProfilePair, SocialProfile, Post } from './types';
 
-const PROFILE_GENERATION_PROMPT = `Generate two detailed user profiles for a Friday night planning scenario in NYC.
+const PROFILE_GENERATION_PROMPT = `Generate two distinct NYC-based people with realistic social media profiles.
+
+For each person, create:
+1. A short bio (like a real social media bio - punchy, indirect signals only)
+2. 20 realistic social media posts spanning the last few months
 
 REQUIREMENTS:
-1. Create two distinct personalities with different preferences
-2. Include 3-5 GUARANTEED TENSION POINTS where their preferences conflict:
-   - Different cuisine preferences (one loves sushi, other is vegetarian)
-   - Different price expectations (one wants upscale, other is budget-conscious)
-   - Different activity styles (one wants quiet dinner, other wants nightlife)
-   - Different neighborhood preferences (one loves Brooklyn, other prefers Manhattan)
-   - Different timing constraints (one available early, other works late)
+- Each person should have a consistent voice and lifestyle that comes through their posts
+- Posts should feel authentic - the mix of mundane, interesting, personal, and random that real people post
+- Include a variety: food, work, friends, complaints, jokes, photos, life updates, shared articles
+- Posts should pass the "would a real person post this?" test
+- Each post is ~30-50 words describing what was posted plus any caption
+- The two people should have naturally different lifestyles (not forced opposites, just different)
 
-3. For each profile, include NOISE DATA that an AI agent would need to sift through:
-   - 3-4 irrelevant childhood memories
-   - 2-3 random work anecdotes
-   - Random facts about their life
-   - This tests the agent's ability to find relevant info
+DO NOT:
+- Create artificially opposed preferences
+- Signal specific categories (budget, dietary, etc.) explicitly
+- Make posts that feel like data points rather than authentic content
 
-4. Make personalities feel real and three-dimensional
+Call the save_profiles tool with the two generated profiles. Generate exactly 20 posts per person with timestamps from October 2024 to January 2025.`;
 
-Return ONLY valid JSON (no markdown, no code blocks) matching this exact structure:
-{
-  "personA": {
-    "id": "person-a",
-    "name": "First Last",
-    "preferences": {
-      "cuisines": ["cuisine1", "cuisine2"],
-      "dietaryRestrictions": [],
-      "priceRange": "moderate",
-      "activityTypes": ["activity1", "activity2"],
-      "neighborhoods": ["neighborhood1"],
-      "socialStyle": "intimate"
+// Tool definition for structured output
+const profileTool: Anthropic.Tool = {
+  name: 'save_profiles',
+  description: 'Save the generated social media profiles for both people',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      personA: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Unique identifier, use "person-a"' },
+          name: { type: 'string', description: 'Full name of the person' },
+          bio: { type: 'string', description: 'Short social media bio' },
+          posts: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Unique post ID' },
+                timestamp: { type: 'string', description: 'ISO 8601 timestamp' },
+                content: { type: 'string', description: 'Description of the post content and caption' },
+                location: { type: 'string', description: 'Optional location tag' },
+                tags: { type: 'array', items: { type: 'string' }, description: 'Optional hashtags or tags' },
+              },
+              required: ['id', 'timestamp', 'content'],
+            },
+          },
+        },
+        required: ['id', 'name', 'bio', 'posts'],
+      },
+      personB: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Unique identifier, use "person-b"' },
+          name: { type: 'string', description: 'Full name of the person' },
+          bio: { type: 'string', description: 'Short social media bio' },
+          posts: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', description: 'Unique post ID' },
+                timestamp: { type: 'string', description: 'ISO 8601 timestamp' },
+                content: { type: 'string', description: 'Description of the post content and caption' },
+                location: { type: 'string', description: 'Optional location tag' },
+                tags: { type: 'array', items: { type: 'string' }, description: 'Optional hashtags or tags' },
+              },
+              required: ['id', 'timestamp', 'content'],
+            },
+          },
+        },
+        required: ['id', 'name', 'bio', 'posts'],
+      },
     },
-    "constraints": {
-      "availability": { "start": "6:00 PM", "end": "11:00 PM" },
-      "budget": 100,
-      "mobilityLimitations": null,
-      "mustAvoid": []
-    },
-    "personality": {
-      "communicationStyle": "description",
-      "priorities": ["priority1", "priority2"],
-      "dealbreakers": ["dealbreaker1"]
-    },
-    "background": {
-      "childhoodMemories": ["memory1", "memory2", "memory3"],
-      "workAnecdotes": ["anecdote1", "anecdote2"],
-      "randomFacts": ["fact1", "fact2"],
-      "recentEvents": ["event1"]
-    }
+    required: ['personA', 'personB'],
   },
-  "personB": { ... same structure ... },
-  "tensionPoints": [
-    {
-      "category": "cuisine",
-      "personAPosition": "Loves authentic Japanese omakase",
-      "personBPosition": "Strict vegetarian, dislikes raw fish",
-      "resolutionHint": "Japanese restaurants with strong vegetarian options"
-    }
-  ]
-}`;
+};
+
+interface ProfileToolInput {
+  personA: SocialProfile;
+  personB: SocialProfile;
+}
 
 export async function generateProfiles(): Promise<ProfilePair> {
   const client = new Anthropic();
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 4096,
+    max_tokens: 8192,
+    tools: [profileTool],
+    tool_choice: { type: 'tool', name: 'save_profiles' },
     messages: [{ role: 'user', content: PROFILE_GENERATION_PROMPT }],
   });
 
-  const content = response.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response type from Claude API');
+  // Find the tool use block
+  const toolUse = response.content.find(
+    (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+  );
+
+  if (!toolUse) {
+    throw new Error('No tool use in response - generation failed');
   }
 
-  // Parse JSON from response (handle potential markdown code blocks)
-  let jsonText = content.text.trim();
+  const input = toolUse.input as ProfileToolInput;
 
-  // Remove markdown code blocks if present
-  const jsonMatch = jsonText.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
-  if (jsonMatch) {
-    jsonText = jsonMatch[1];
+  // Validate the structure
+  if (!input.personA || !input.personB) {
+    throw new Error('Invalid profile structure: missing personA or personB');
   }
 
-  try {
-    const profiles = JSON.parse(jsonText) as ProfilePair;
-
-    // Validate required fields
-    if (!profiles.personA || !profiles.personB || !profiles.tensionPoints) {
-      throw new Error('Invalid profile structure: missing required fields');
-    }
-
-    return profiles;
-  } catch (error) {
-    console.error('Failed to parse profile JSON:', jsonText.slice(0, 500));
-    throw new Error(
-      `Failed to parse generated profiles: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
+  if (!input.personA.posts?.length || !input.personB.posts?.length) {
+    throw new Error('Invalid profile structure: missing posts');
   }
+
+  // Ensure posts have all required fields with defaults
+  const normalizePost = (post: Partial<Post>, index: number, prefix: string): Post => ({
+    id: post.id || `${prefix}${index + 1}`,
+    timestamp: post.timestamp || new Date().toISOString(),
+    content: post.content || '',
+    location: post.location,
+    tags: post.tags,
+  });
+
+  const profiles: ProfilePair = {
+    personA: {
+      ...input.personA,
+      posts: input.personA.posts.map((p, i) => normalizePost(p, i, 'a')),
+    },
+    personB: {
+      ...input.personB,
+      posts: input.personB.posts.map((p, i) => normalizePost(p, i, 'b')),
+    },
+  };
+
+  return profiles;
 }

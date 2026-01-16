@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import type { UserProfile } from '@/lib/profiles/types';
+import type { SocialProfile } from '@/lib/profiles/types';
 
 interface ProfileCardProps {
-  profile: UserProfile;
+  profile: SocialProfile;
   variant: 'a' | 'b';
   isActive?: boolean;
 }
@@ -14,6 +14,9 @@ export function ProfileCard({ profile, variant, isActive }: ProfileCardProps) {
 
   const isA = variant === 'a';
   const label = isA ? 'Person A' : 'Person B';
+
+  // Get sample posts for preview
+  const samplePosts = profile.posts.slice(0, 5);
 
   return (
     <div
@@ -43,7 +46,7 @@ export function ProfileCard({ profile, variant, isActive }: ProfileCardProps) {
       {/* Header */}
       <div className="relative p-5 pb-4">
         <div className="flex items-start justify-between">
-          <div>
+          <div className="flex-1">
             <div className="flex items-center gap-2">
               <span
                 className={`
@@ -53,15 +56,18 @@ export function ProfileCard({ profile, variant, isActive }: ProfileCardProps) {
               >
                 {label}
               </span>
-              <span className="text-[10px] text-stone-500">· Hestia Agent</span>
+              <span className="text-[10px] text-stone-500">· {profile.posts.length} posts</span>
             </div>
             <h3 className="mt-2 text-xl font-display font-semibold text-white tracking-tight">
               {profile.name}
             </h3>
+            <p className="mt-1 text-sm text-stone-400 leading-relaxed">
+              {profile.bio}
+            </p>
           </div>
           <div
             className={`
-              w-10 h-10 rounded-xl flex items-center justify-center text-lg font-display font-bold
+              w-12 h-12 rounded-xl flex items-center justify-center text-xl font-display font-bold shrink-0 ml-4
               ${isA ? 'bg-terracotta-500/20 text-terracotta-400' : 'bg-cyan-500/20 text-cyan-400'}
             `}
           >
@@ -70,125 +76,63 @@ export function ProfileCard({ profile, variant, isActive }: ProfileCardProps) {
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="px-5 pb-4 grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <p className="text-[10px] font-mono uppercase tracking-wider text-stone-500">Budget</p>
-          <p className="text-sm font-medium text-stone-200">${profile.constraints.budget}/person</p>
-        </div>
-        <div className="space-y-1">
-          <p className="text-[10px] font-mono uppercase tracking-wider text-stone-500">Available</p>
-          <p className="text-sm font-medium text-stone-200">
-            {profile.constraints.availability.start} - {profile.constraints.availability.end}
-          </p>
-        </div>
-      </div>
-
-      {/* Preferences Tags */}
+      {/* Sample Posts Preview */}
       <div className="px-5 pb-4">
         <p className="text-[10px] font-mono uppercase tracking-wider text-stone-500 mb-2">
-          Preferences
+          Recent Posts
         </p>
-        <div className="flex flex-wrap gap-1.5">
-          {profile.preferences.cuisines.slice(0, 3).map((cuisine) => (
-            <span
-              key={cuisine}
+        <div className="space-y-2">
+          {samplePosts.slice(0, isExpanded ? 5 : 2).map((post) => (
+            <div
+              key={post.id}
               className={`
-                px-2 py-0.5 text-xs rounded-full border
-                ${isA
-                  ? 'bg-terracotta-500/10 border-terracotta-500/20 text-terracotta-200'
-                  : 'bg-cyan-500/10 border-cyan-500/20 text-cyan-200'
-                }
+                p-3 rounded-lg text-sm text-stone-300 leading-relaxed
+                ${isA ? 'bg-terracotta-900/20' : 'bg-cyan-900/20'}
               `}
             >
-              {cuisine}
-            </span>
-          ))}
-          {profile.preferences.activityTypes.slice(0, 2).map((activity) => (
-            <span
-              key={activity}
-              className="px-2 py-0.5 text-xs rounded-full border bg-stone-800/50 border-stone-700/50 text-stone-300"
-            >
-              {activity}
-            </span>
+              <p className="line-clamp-2">{post.content}</p>
+              <div className="flex items-center gap-2 mt-1.5 text-[10px] text-stone-500">
+                {post.location && (
+                  <span className="flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {post.location}
+                  </span>
+                )}
+                {post.tags && post.tags.length > 0 && (
+                  <span className="truncate">{post.tags.slice(0, 2).join(' ')}</span>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
-      {/* Expandable Details */}
-      <div className="border-t border-stone-800/50">
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className={`
-            w-full px-5 py-3 flex items-center justify-between text-xs font-mono uppercase tracking-wider
-            transition-colors duration-200
-            ${isA ? 'text-terracotta-400 hover:text-terracotta-300' : 'text-cyan-400 hover:text-cyan-300'}
-          `}
-        >
-          <span>{isExpanded ? 'Less details' : 'More details'}</span>
-          <svg
-            className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+      {/* Expand/Collapse */}
+      {samplePosts.length > 2 && (
+        <div className="border-t border-stone-800/50">
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className={`
+              w-full px-5 py-3 flex items-center justify-between text-xs font-mono uppercase tracking-wider
+              transition-colors duration-200
+              ${isA ? 'text-terracotta-400 hover:text-terracotta-300' : 'text-cyan-400 hover:text-cyan-300'}
+            `}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        <div
-          className={`
-            overflow-hidden transition-all duration-500 ease-out
-            ${isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}
-          `}
-        >
-          <div className="px-5 pb-5 space-y-4">
-            {/* Dietary Restrictions */}
-            {profile.preferences.dietaryRestrictions.length > 0 && (
-              <div>
-                <p className="text-[10px] font-mono uppercase tracking-wider text-stone-500 mb-1.5">
-                  Dietary
-                </p>
-                <p className="text-sm text-stone-300">
-                  {profile.preferences.dietaryRestrictions.join(', ')}
-                </p>
-              </div>
-            )}
-
-            {/* Neighborhoods */}
-            <div>
-              <p className="text-[10px] font-mono uppercase tracking-wider text-stone-500 mb-1.5">
-                Preferred Areas
-              </p>
-              <p className="text-sm text-stone-300">
-                {profile.preferences.neighborhoods.join(', ')}
-              </p>
-            </div>
-
-            {/* Personality */}
-            <div>
-              <p className="text-[10px] font-mono uppercase tracking-wider text-stone-500 mb-1.5">
-                Priorities
-              </p>
-              <p className="text-sm text-stone-300">
-                {profile.personality.priorities.join(' · ')}
-              </p>
-            </div>
-
-            {/* Dealbreakers */}
-            {profile.personality.dealbreakers.length > 0 && (
-              <div>
-                <p className="text-[10px] font-mono uppercase tracking-wider text-red-400/70 mb-1.5">
-                  Dealbreakers
-                </p>
-                <p className="text-sm text-stone-400">
-                  {profile.personality.dealbreakers.join(', ')}
-                </p>
-              </div>
-            )}
-          </div>
+            <span>{isExpanded ? 'Show less' : `Show ${samplePosts.length - 2} more posts`}</span>
+            <svg
+              className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }

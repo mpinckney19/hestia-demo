@@ -6,12 +6,22 @@ import type { CoordinationEvent } from '@/lib/agents/types';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const DEFAULT_SCENARIO = 'Plan a Friday night out in NYC that works for both people.';
+const DEFAULT_SCENARIO_ID = 'friday_night';
+const DEFAULT_SCENARIO_LABEL = 'Friday Night';
+
 export async function POST(request: NextRequest) {
   let profiles: ProfilePair;
+  let scenario: string;
+  let scenarioId: string;
+  let scenarioLabel: string;
 
   try {
     const body = await request.json();
     profiles = body.profiles as ProfilePair;
+    scenario = body.scenario || DEFAULT_SCENARIO;
+    scenarioId = body.scenarioId || DEFAULT_SCENARIO_ID;
+    scenarioLabel = body.scenarioLabel || DEFAULT_SCENARIO_LABEL;
 
     if (!profiles?.personA || !profiles?.personB) {
       return new Response(JSON.stringify({ error: 'Invalid profiles data' }), {
@@ -36,7 +46,7 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        const orchestrator = new CoordinationOrchestrator(profiles);
+        const orchestrator = new CoordinationOrchestrator(profiles, scenario, scenarioId, scenarioLabel);
 
         for await (const event of orchestrator.coordinate()) {
           sendEvent(event);

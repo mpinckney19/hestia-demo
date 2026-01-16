@@ -1,57 +1,25 @@
 /**
- * Profile types for AI-generated user profiles
+ * Profile types for social media-based user profiles (V2)
+ * The AI learns who someone is from their posts, then applies that understanding to any scenario.
  */
 
-export interface UserPreferences {
-  cuisines: string[];
-  dietaryRestrictions: string[];
-  priceRange: 'budget' | 'moderate' | 'upscale' | 'splurge';
-  activityTypes: string[];
-  neighborhoods: string[];
-  socialStyle: 'intimate' | 'lively' | 'adventurous';
+export interface Post {
+  id: string;
+  timestamp: string;       // ISO date
+  content: string;         // ~50 words describing the post + caption
+  location?: string;       // Optional location tag
+  tags?: string[];         // Optional hashtags or tagged people
 }
 
-export interface UserConstraints {
-  availability: {
-    start: string; // e.g., "6:00 PM"
-    end: string;   // e.g., "11:00 PM"
-  };
-  budget: number; // max per person in USD
-  mobilityLimitations?: string;
-  mustAvoid?: string[];
-}
-
-export interface UserPersonality {
-  communicationStyle: string;
-  priorities: string[];
-  dealbreakers: string[];
-}
-
-export interface UserBackground {
-  childhoodMemories: string[];
-  workAnecdotes: string[];
-  randomFacts: string[];
-  recentEvents: string[];
-}
-
-export interface UserProfile {
+export interface SocialProfile {
   id: string;
   name: string;
-  preferences: UserPreferences;
-  constraints: UserConstraints;
-  personality: UserPersonality;
-  background: UserBackground;
-}
-
-export interface TensionPoint {
-  category: string;
-  personAPosition: string;
-  personBPosition: string;
-  resolutionHint: string;
+  bio: string;             // Short, like a real bio: "Designer @ Figma | BK | pizza emoji"
+  posts: Post[];           // 50 posts
 }
 
 export interface ProfilePair {
-  personA: UserProfile;
-  personB: UserProfile;
-  tensionPoints: TensionPoint[];
+  personA: SocialProfile;
+  personB: SocialProfile;
+  // Tension points are discovered naturally from posts, not prescribed
 }

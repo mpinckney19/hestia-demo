@@ -30,7 +30,10 @@ export interface PlannedActivity {
 }
 
 export interface AgreedPlan {
+  scenarioId: string;
+  scenarioLabel: string;
   summary: string;
+  rawPlanText: string;
   activities: PlannedActivity[];
   compromises: string[];
 }

@@ -1,120 +1,145 @@
 /**
- * MCP tools for querying user profile data
- * Hestia uses these to learn about their assigned user
+ * MCP tools for querying user social media profile data
+ * Hestia uses these to learn about their assigned user from their posts
  */
 
 import { z } from 'zod/v4';
 import { tool } from '@anthropic-ai/claude-agent-sdk';
-import type { UserProfile } from '@/lib/profiles/types';
+import type { SocialProfile, Post } from '@/lib/profiles/types';
 
 /**
- * Creates MCP tools bound to a specific user profile
+ * Creates MCP tools bound to a specific social profile
  */
-export function createProfileTools(profile: UserProfile) {
-  const getUserPreferences = tool(
-    'get_user_preferences',
-    "Get the user's preferences for dining, activities, and social style. Returns structured preference data.",
-    {
-      category: z
-        .enum(['cuisine', 'activities', 'neighborhoods', 'social_style', 'dietary', 'price', 'all'])
-        .describe('Which preference category to retrieve'),
-    },
-    async ({ category }) => {
-      if (category === 'all') {
-        return {
-          content: [{ type: 'text' as const, text: JSON.stringify(profile.preferences, null, 2) }],
-        };
-      }
-
-      const categoryMap: Record<string, unknown> = {
-        cuisine: { cuisines: profile.preferences.cuisines },
-        activities: { activityTypes: profile.preferences.activityTypes },
-        neighborhoods: { neighborhoods: profile.preferences.neighborhoods },
-        social_style: { socialStyle: profile.preferences.socialStyle },
-        dietary: { dietaryRestrictions: profile.preferences.dietaryRestrictions },
-        price: { priceRange: profile.preferences.priceRange },
-      };
-
-      const result = categoryMap[category] || { error: `Unknown category: ${category}` };
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
-      };
-    }
-  );
-
-  const getUserConstraints = tool(
-    'get_user_constraints',
-    "Get the user's constraints including availability, budget, and any limitations.",
+export function createProfileTools(profile: SocialProfile) {
+  const getProfile = tool(
+    'get_profile',
+    "Get the user's name and bio.",
     {},
     async () => {
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(profile.constraints, null, 2) }],
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({ name: profile.name, bio: profile.bio }, null, 2),
+          },
+        ],
       };
     }
   );
 
-  const getUserPersonality = tool(
-    'get_user_personality',
-    "Get information about the user's personality, priorities, and dealbreakers.",
-    {},
-    async () => {
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(profile.personality, null, 2) }],
-      };
-    }
-  );
-
-  const getUserBackground = tool(
-    'get_user_background',
-    "Get background information about the user. Note: This includes various personal details - you may need to determine what is relevant to planning.",
+  const getPosts = tool(
+    'get_posts',
+    "Browse the user's social media posts. Returns posts in reverse chronological order.",
     {
-      topic: z
+      count: z
+        .number()
+        .optional()
+        .describe('Number of posts to return (default 10, max 50)'),
+      offset: z
+        .number()
+        .optional()
+        .describe('Number of posts to skip for pagination'),
+      before: z
         .string()
         .optional()
-        .describe('Optional topic to filter background info (e.g., "food", "activities")'),
+        .describe('Return posts before this ISO date'),
+      after: z
+        .string()
+        .optional()
+        .describe('Return posts after this ISO date'),
     },
-    async () => {
-      // Return ALL background info - agent must sift through
-      // This is intentional to test intelligent context fetching
-      const background = profile.background;
-      const allInfo = [
-        ...background.childhoodMemories.map((m) => `[Memory] ${m}`),
-        ...background.workAnecdotes.map((a) => `[Work] ${a}`),
-        ...background.randomFacts.map((f) => `[Fact] ${f}`),
-        ...background.recentEvents.map((e) => `[Recent] ${e}`),
-      ];
+    async ({ count = 10, offset = 0, before, after }) => {
+      // Sort posts by timestamp descending
+      let posts = [...profile.posts].sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+
+      // Apply date filters
+      if (before) {
+        const beforeDate = new Date(before).getTime();
+        posts = posts.filter((p) => new Date(p.timestamp).getTime() < beforeDate);
+      }
+      if (after) {
+        const afterDate = new Date(after).getTime();
+        posts = posts.filter((p) => new Date(p.timestamp).getTime() > afterDate);
+      }
+
+      // Apply pagination
+      const clampedCount = Math.min(Math.max(count, 1), 50);
+      const result = posts.slice(offset, offset + clampedCount);
 
       return {
-        content: [{ type: 'text' as const, text: allInfo.join('\n\n') }],
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(
+              {
+                posts: result,
+                total: posts.length,
+                returned: result.length,
+                offset,
+              },
+              null,
+              2
+            ),
+          },
+        ],
       };
     }
   );
 
-  const queryUserProfile = tool(
-    'query_user_profile',
-    "Get a comprehensive overview of the user including name, preferences, constraints, and personality.",
-    {},
-    async () => {
-      const overview = {
-        name: profile.name,
-        preferences: profile.preferences,
-        constraints: profile.constraints,
-        personality: profile.personality,
-        // Include a couple random facts as noise
-        additionalContext: profile.background.randomFacts.slice(0, 2),
-      };
+  const searchPosts = tool(
+    'search_posts',
+    "Search through the user's posts by content, location, or tags.",
+    {
+      query: z.string().describe('Search query to match against post content, location, and tags'),
+      limit: z
+        .number()
+        .optional()
+        .describe('Maximum number of results to return (default 10)'),
+    },
+    async ({ query, limit = 10 }) => {
+      const queryLower = query.toLowerCase();
+
+      const matchingPosts: Post[] = profile.posts.filter((post) => {
+        // Search in content
+        if (post.content.toLowerCase().includes(queryLower)) {
+          return true;
+        }
+        // Search in location
+        if (post.location?.toLowerCase().includes(queryLower)) {
+          return true;
+        }
+        // Search in tags
+        if (post.tags?.some((tag) => tag.toLowerCase().includes(queryLower))) {
+          return true;
+        }
+        return false;
+      });
+
+      // Sort by timestamp descending and limit
+      const sortedPosts = matchingPosts
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, Math.min(limit, 50));
 
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(overview, null, 2) }],
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(
+              {
+                query,
+                matches: sortedPosts.length,
+                posts: sortedPosts,
+              },
+              null,
+              2
+            ),
+          },
+        ],
       };
     }
   );
 
-  return [
-    getUserPreferences,
-    getUserConstraints,
-    getUserPersonality,
-    getUserBackground,
-    queryUserProfile,
-  ];
+  return [getProfile, getPosts, searchPosts];
 }

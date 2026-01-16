@@ -115,7 +115,12 @@ export function useCoordination() {
     }
   }, []);
 
-  const startCoordination = useCallback(async (profiles: ProfilePair) => {
+  const startCoordination = useCallback(async (
+    profiles: ProfilePair,
+    scenario: string,
+    scenarioId: string,
+    scenarioLabel: string
+  ) => {
     // Cancel any existing coordination
     abortControllerRef.current?.abort();
     abortControllerRef.current = new AbortController();
@@ -131,7 +136,7 @@ export function useCoordination() {
       const response = await fetch('/api/coordination', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profiles }),
+        body: JSON.stringify({ profiles, scenario, scenarioId, scenarioLabel }),
         signal: abortControllerRef.current.signal,
       });
 

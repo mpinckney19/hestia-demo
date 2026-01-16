@@ -14,13 +14,19 @@ const AGREEMENT_SIGNAL = 'AGREEMENT REACHED:';
 
 export class CoordinationOrchestrator {
   private profiles: ProfilePair;
+  private scenario: string;
+  private scenarioId: string;
+  private scenarioLabel: string;
   private conversationHistory: Array<{ role: AgentRole; content: string }> = [];
   private mcpServerA: ReturnType<typeof createProfileMcpServer>;
   private mcpServerB: ReturnType<typeof createProfileMcpServer>;
   private abortController: AbortController;
 
-  constructor(profiles: ProfilePair) {
+  constructor(profiles: ProfilePair, scenario: string, scenarioId: string, scenarioLabel: string) {
     this.profiles = profiles;
+    this.scenario = scenario;
+    this.scenarioId = scenarioId;
+    this.scenarioLabel = scenarioLabel;
     this.mcpServerA = createProfileMcpServer(profiles.personA, 'profile_a');
     this.mcpServerB = createProfileMcpServer(profiles.personB, 'profile_b');
     this.abortController = new AbortController();
@@ -42,11 +48,15 @@ export class CoordinationOrchestrator {
       const serverName = isAgentA ? 'profile_a' : 'profile_b';
 
       // Build the prompt for this turn
-      const systemPrompt = createHestiaPrompt(profile, isAgentA ? 'a' : 'b');
+      const systemPrompt = createHestiaPrompt(profile, isAgentA ? 'a' : 'b', this.scenario);
       const turnPrompt = createTurnPrompt(this.conversationHistory, currentSpeaker);
 
       let fullResponse = '';
       const toolInvocations: ToolInvocation[] = [];
+      let assistantMessageCount = 0;
+
+      console.log(`\n[Coordinator] === Turn ${turnCount + 1}: ${currentSpeaker} ===`);
+      console.log(`[Coordinator] Conversation history length: ${this.conversationHistory.length}`);
 
       try {
         // Run the agent for this turn
@@ -54,20 +64,19 @@ export class CoordinationOrchestrator {
           prompt: turnPrompt,
           options: {
             abortController: this.abortController,
-            model: 'claude-sonnet-4-20250514',
+            model: 'claude-opus-4-5-20251101',
             systemPrompt,
             mcpServers: {
               [serverName]: mcpServer,
             },
             // Only allow the profile tools for this agent's user
             allowedTools: [
-              `mcp__${serverName}__get_user_preferences`,
-              `mcp__${serverName}__get_user_constraints`,
-              `mcp__${serverName}__get_user_personality`,
-              `mcp__${serverName}__get_user_background`,
-              `mcp__${serverName}__query_user_profile`,
+              `mcp__${serverName}__get_profile`,
+              `mcp__${serverName}__get_posts`,
+              `mcp__${serverName}__search_posts`,
+              'WebSearch',
             ],
-            maxTurns: 3, // Limit internal turns per coordination turn
+            maxTurns: 10, // Allow enough internal turns for tool use + response
             persistSession: false,
           },
         })) {
@@ -91,9 +100,12 @@ export class CoordinationOrchestrator {
               }
             }
           } else if (message.type === 'assistant') {
+            assistantMessageCount++;
+            console.log(`[Coordinator] Assistant message #${assistantMessageCount}, blocks: ${message.message.content.length}`);
             // Emit all text content from assistant messages
             for (const block of message.message.content) {
               if (block.type === 'text') {
+                console.log(`[Coordinator] Text block (${block.text.length} chars): "${block.text.slice(0, 100)}..."`);
                 fullResponse += block.text;
                 yield {
                   type: 'text_delta',
@@ -117,6 +129,9 @@ export class CoordinationOrchestrator {
               }
             }
           } else if (message.type === 'result') {
+            // Log the result message structure for debugging
+            console.log('[Coordinator] Result message:', JSON.stringify(message, null, 2));
+            console.log('[Coordinator] Full response captured:', fullResponse.slice(0, 200) + '...');
             // Mark any pending tool invocations as completed
             for (const tool of toolInvocations) {
               if (tool.status === 'running') {
@@ -196,7 +211,10 @@ export class CoordinationOrchestrator {
     const compromises = this.extractCompromises(response);
 
     return {
-      summary: lines[0]?.replace(/^[-*#\s]+/, '').trim() || 'Friday night plan agreed',
+      scenarioId: this.scenarioId,
+      scenarioLabel: this.scenarioLabel,
+      summary: lines[0]?.replace(/^[-*#\s]+/, '').trim() || 'Plan agreed',
+      rawPlanText: planText.trim(),
       activities,
       compromises,
     };
@@ -232,8 +250,8 @@ export class CoordinationOrchestrator {
     // If no time-based activities found, create a generic one
     if (activities.length === 0) {
       activities.push({
-        time: 'Evening',
-        activity: 'Dinner and activities as planned',
+        time: 'As planned',
+        activity: 'Activities as agreed',
         location: 'NYC',
       });
     }
